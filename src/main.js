@@ -3,29 +3,28 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
-// Importamos el componente Login
-import Login from './componentes/Login';
+import Login from './componentes/Login.jsx';
+import Administrator from './componentes/Administrator.jsx';
+import AreaTrabajo from './componentes/AreaTrabajo.jsx'; // <--- Importamos la nueva pantalla
 
-// Un componente temporal sencillo para cuando el login sea exitoso
-const Administrator = () => (
-  <div className="p-5 text-center mt-5">
-    <h1 style={{ color: '#003366' }}>Panel de Administrador</h1>
-    <p className="text-muted">Gestor de Diagramas de Actividades</p>
-  </div>
-);
+const getBasename = () => {
+  const path = window.location.pathname;
+  if (path.includes('/administrator') || path.includes('/workspace')) {
+      return path.split('/administrator')[0].split('/workspace')[0];
+  }
+  return path.endsWith('/') ? path.slice(0, -1) : path;
+};
 
 const App = () => (
-  <BrowserRouter>
+  <BrowserRouter basename={getBasename()}>
     <Routes>
-      {/* Ruta principal muestra el Login */}
       <Route path="/" element={<Login />} />
-      {/* Ruta protegida a la que redirige el Login exitoso */}
       <Route path="/administrator" element={<Administrator />} />
+      <Route path="/workspace" element={<AreaTrabajo />} /> {/* <--- Agregamos la ruta */}
     </Routes>
   </BrowserRouter>
 );
 
-// Enganchamos React al HTML
 const container = document.getElementById('contenedor');
 const root = createRoot(container);
 root.render(<App />);
