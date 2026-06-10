@@ -19,8 +19,14 @@ public class Login extends HttpServlet {
             throws ServletException, IOException {
         
         outter = response.getWriter();
-        response.setContentType("text/html"); // Formato exacto del profe
-        response.addHeader("Access-Control-Allow-Origin", "*"); // Añadido por seguridad CORS del profe
+        response.setContentType("text/html"); 
+        response.addHeader("Access-Control-Allow-Origin", "*"); 
+        
+        // --- ENCABEZADOS DE CACHÉ REQUERIDOS POR LA RÚBRICA ---
+        response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+        response.setHeader("Pragma", "no-cache");
+        response.setHeader("Expires", "0");
+        // ------------------------------------------------------
         
         String usuario = request.getParameter("user");
         String password = request.getParameter("password");
@@ -33,7 +39,6 @@ public class Login extends HttpServlet {
             ResultSet rs = bd.executeQuery("select * from login where USERNAME='" + usuario + "' and PASSWORD='" + password + "';");
             
             if(rs.next()) {
-                
                 out.println("{\"status\":\"yes\",\"tipo\":\"" + rs.getString("tipousuario") + "\"}");
             } else {
                 out.println("{\"status\":\"no\",\"tipo\":\"nodefinido\"}");            
