@@ -12,31 +12,35 @@ import javax.servlet.http.HttpServletResponse;
 @WebServlet(name = "Login", urlPatterns = {"/Login"})
 public class Login extends HttpServlet {
 
+    private PrintWriter outter;
+
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
+        outter = response.getWriter();
+        response.setContentType("text/html"); // Formato exacto del profe
+        response.addHeader("Access-Control-Allow-Origin", "*"); // Añadido por seguridad CORS del profe
         
         String usuario = request.getParameter("user");
         String password = request.getParameter("password");
         PrintWriter out = response.getWriter();
         
         try {
-            DB bd= new DB();
+            DB bd = new DB();
             bd.setConnection("com.mysql.cj.jdbc.Driver", "jdbc:mysql://localhost:3306/usuarios?serverTimezone=UTC");
             
-            ResultSet rs = bd.executeQuery("SELECT * FROM login WHERE USERNAME='" + usuario + "' AND PASSWORD='" + password + "';");
+            ResultSet rs = bd.executeQuery("select * from login where USERNAME='" + usuario + "' and PASSWORD='" + password + "';");
             
             if(rs.next()) {
-                out.println("{\"status\":\"yes\",\"tipo\":\"" + rs.getString("TIPOUSUARIO") + "\"}");
+                
+                out.println("{\"status\":\"yes\",\"tipo\":\"" + rs.getString("tipousuario") + "\"}");
             } else {
                 out.println("{\"status\":\"no\",\"tipo\":\"nodefinido\"}");            
             }    
             bd.closeConnection();
         } catch(Exception e) {
-            out.println("{\"status\":\"error\",\"mensaje\":\"" + e.getMessage() + "\"}");
+            e.printStackTrace();
         }
     }
 }

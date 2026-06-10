@@ -12,41 +12,40 @@ import javax.servlet.http.HttpServletResponse;
 @WebServlet(name = "Ejercicios", urlPatterns = {"/Ejercicios"})
 public class Ejercicios extends HttpServlet {
 
+    private PrintWriter out;
+
     @Override
-    protected void doGet(HttpServletRequest request, HttpServletResponse response)
-            throws ServletException, IOException {
-        
-        // Configuramos la respuesta para que React la reciba en formato JSON
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        out = response.getWriter();
         response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
-        PrintWriter out = response.getWriter();
+        response.addHeader("Access-Control-Allow-Origin", "*");
+        
+        StringBuilder json = new StringBuilder();
+        json.append("[");            
         
         try {
-            DB bd = new DB();
-            // ¡Ojo aquí! Nos conectamos a la BD crudjson, no a la de usuarios
-            bd.setConnection("com.mysql.cj.jdbc.Driver", "jdbc:mysql://localhost:3306/crudjson?serverTimezone=UTC");
-            
-            ResultSet rs = bd.executeQuery("SELECT columnajson FROM tablajson");
-            
-            // Armamos el arreglo JSON a mano leyendo fila por fila
-            StringBuilder jsonArray = new StringBuilder();
-            jsonArray.append("[");
-            
-            boolean first = true;
-            while (rs.next()) {
-                if (!first) {
-                    jsonArray.append(",");
-                }
-                jsonArray.append(rs.getString("columnajson"));
-                first = false;
+            DB bd= new DB();
+            bd.setConnection("com.mysql.cj.jdbc.Driver", "jdbc:mysql://localhost:3306/crudjson?serverTimezone=UTC");        
+            ResultSet rs = bd.executeQuery("select * from tablajson;");      
+
+            while(rs.next()) {
+                String cadena = rs.getString("columnajson");
+                json.append(cadena + ",");
             }
-            jsonArray.append("]");
-            
-            out.print(jsonArray.toString());
-            
             bd.closeConnection();
-        } catch (Exception e) {
-            out.print("[{\"error\": \"" + e.getMessage() + "\"}]");
+        } catch(Exception e) {
+            e.printStackTrace();
         }
+        
+        // Truco del profesor para quitar la última coma
+        int indice = json.lastIndexOf(",");
+        if (indice != -1) {
+            json.deleteCharAt(indice);
+        }
+        json.append("]");
+        
+        // Salida a consola como lo hace el profe
+        System.out.println(json.toString());
+        out.write(json.toString());
     }
 }
