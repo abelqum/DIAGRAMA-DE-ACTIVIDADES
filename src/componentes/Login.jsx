@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
-
-// Importamos la imagen representativa del proyecto
 import fondo from '../img/fondo.webp';
 
 const Login = () => {
@@ -10,7 +8,6 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
 
-  // Se limpia al cargar la página
   useEffect(() => {
     setUsuario('');
     setPassword('');
@@ -24,8 +21,8 @@ const Login = () => {
           Swal.fire({
             icon: "success",
             title: "Acceso Autorizado",
-            text: "Bienvenido al sistema de modelado.",
-            confirmButtonColor: "#d4af37"
+            text: "Bienvenido al sistema.",
+            confirmButtonColor: "#212529"
           }).then(() => {
             navigate('/administrator');
           });
@@ -34,21 +31,20 @@ const Login = () => {
             icon: "error",
             title: "Credenciales Inválidas",
             text: "Verifique su usuario y contraseña.",
-            confirmButtonColor: "#6c757d"
+            confirmButtonColor: "#dc3545"
           });
-          // Se limpian los campos tras la validación incorrecta
           setUsuario('');
           setPassword('');
         }
       })
       .catch(err => {
-        Swal.fire("Error de Conexión", "No se pudo contactar al servidor Tomcat.", "error");
+        Swal.fire("Error", "No se pudo contactar al servidor Tomcat.", "error");
       });
   };
 
   return (
     <div 
-      className="min-vh-100 d-flex flex-column"
+      className="min-vh-100 d-flex align-items-center justify-content-center position-relative"
       style={{ 
         backgroundImage: `url(${fondo})`, 
         backgroundSize: "cover", 
@@ -56,48 +52,47 @@ const Login = () => {
         backgroundRepeat: "no-repeat"
       }}
     >
-      {/* Encabezado con transparencia sobre la imagen de fondo */}
-      <div className="text-white text-center p-4 border-bottom border-warning border-3" style={{ backgroundColor: "rgba(0, 51, 102, 0.9)" }}>
-        <h1 className="mb-0">Módulo de Autenticación</h1>
-        <p className="mt-2 mb-0 text-light">Herramienta de Modelado: Diagramas de Actividades</p>
-      </div>
+      {/* Capa oscura semitransparente para que la tarjeta resalte */}
+      <div className="position-absolute top-0 start-0 w-100 h-100 bg-dark" style={{ opacity: 0.6 }}></div>
       
-      <div className="container mt-5">
+      <div className="container position-relative z-1">
         <div className="row justify-content-center">
-          <div className="col-12 col-md-6 col-lg-5">
-            {/* Tarjeta con fondo semitransparente */}
-            <div className="card shadow border-0 border-top border-primary border-4 p-4" style={{ backgroundColor: "rgba(255, 255, 255, 0.95)" }}>
-              <h4 className="text-center mb-4 text-dark">Iniciar Sesión</h4>
+          <div className="col-11 col-sm-8 col-md-6 col-lg-4">
+            <div className="card shadow-lg border-0 rounded-4 p-4 p-md-5 bg-white">
               
-              <div className="mb-3">
-                <label className="form-label text-secondary" htmlFor="usuario">Usuario</label>
+              <div className="text-center mb-4">
+                <h2 className="fw-bold text-dark mb-1">Login</h2>
+                <p className="text-muted small mb-0">Diagrama de Actividades 5CM1</p>
+              </div>
+              
+              <div className="form-floating mb-3">
                 <input 
                   type="text" 
                   id="usuario" 
-                  className="form-control" 
-                  placeholder="Ingrese el usuario" 
+                  className="form-control rounded-3 bg-light border-0" 
+                  placeholder="Usuario" 
                   value={usuario} 
                   onChange={(e) => setUsuario(e.target.value)} 
                   autoComplete="off" 
                 />
+                <label className="text-muted" htmlFor="usuario">Usuario</label>
               </div>
               
-              <div className="mb-4">
-                <label className="form-label text-secondary" htmlFor="password">Contraseña</label>
+              <div className="form-floating mb-4">
                 <input 
                   type="password" 
                   id="password" 
-                  className="form-control" 
-                  placeholder="Ingrese su contraseña" 
+                  className="form-control rounded-3 bg-light border-0" 
+                  placeholder="Contraseña" 
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)} 
                   autoComplete="new-password" 
                 />
+                <label className="text-muted" htmlFor="password">Contraseña</label>
               </div>
               
               <button 
-                className="btn w-100 fw-bold" 
-                style={{ backgroundColor: "#003366", color: "#fff" }} 
+                className="btn btn-dark btn-lg w-100 rounded-3 fw-semibold shadow-sm" 
                 onClick={validar}
               >
                 Ingresar

@@ -27,7 +27,6 @@ const Administrator = () => {
   };
 
   const crearNuevo = () => {
-    // Generamos un ID 100% numérico para evitar errores en la BD
     const nuevoId = Math.floor(Math.random() * 1000000);
     navigate('/workspace', { state: { diagrama: { id: nuevoId, nombre: 'Diagrama en Blanco', nodos: [], conexiones: [] } } });
   };
@@ -63,25 +62,29 @@ const Administrator = () => {
 
   return (
     <div className="bg-light min-vh-100">
-      <header className="bg-dark text-white p-3 d-flex justify-content-between align-items-center border-bottom border-warning border-3">
-        <h4 className="m-0">Gestor de Diagramas de Actividades</h4>
-
-<button className="btn btn-outline-light btn-sm" onClick={() => navigate('/')}>
-  Cerrar Sesión
-</button>
-      </header>
+      {/* Navbar limpia y moderna */}
+      <nav className="navbar navbar-light bg-white shadow-sm px-4 py-3">
+        <div className="container-fluid d-flex justify-content-between align-items-center">
+          <div>
+            <span className="navbar-brand mb-0 h5 fw-bold text-dark">Diagrama de Actividades 5CM1</span>
+          </div>
+          <button className="btn btn-outline-danger btn-sm rounded-pill px-4 fw-semibold" onClick={() => window.location.href = '/'}>
+            Cerrar Sesión
+          </button>
+        </div>
+      </nav>
 
       <div className="container mt-5">
-        <div className="d-flex justify-content-between align-items-center mb-4">
-          <h3 className="text-dark">Mis Diagramas</h3>
-          <button className="btn btn-warning fw-bold text-dark" onClick={crearNuevo}>
-            + Crear Diagrama en Blanco
+        <div className="d-flex justify-content-between align-items-center mb-5">
+          <h3 className="text-dark fw-bold m-0">Mis Diagramas</h3>
+          <button className="btn btn-dark rounded-pill px-4 shadow-sm fw-semibold" onClick={crearNuevo}>
+            + Crear Nuevo
           </button>
         </div>
 
         {loading ? (
           <div className="text-center mt-5">
-            <div className="spinner-border text-warning" role="status"></div>
+            <div className="spinner-border text-dark" role="status"></div>
           </div>
         ) : (
           <div className="row">
@@ -89,25 +92,26 @@ const Administrator = () => {
               diagramas.map((item, index) => {
                 const datos = typeof item === 'string' ? JSON.parse(item) : item;
                 return (
-                  <div className="col-md-4 mb-4" key={datos.id || index}>
-                    <div className="card h-100 shadow-sm border-0 border-top border-primary border-3">
-                      <div className="card-body d-flex flex-column">
-                        {/* Mostramos el nombre personalizado o uno por defecto */}
-                        <h5 className="card-title text-primary fw-bold">
+                  <div className="col-md-4 col-lg-3 mb-4" key={datos.id || index}>
+                    <div className="card h-100 shadow-sm border-0 rounded-4">
+                      <div className="card-body d-flex flex-column p-4">
+                        <h5 className="card-title text-dark fw-bold mb-1">
                           {datos.nombre ? datos.nombre : `Diagrama ${datos.id}`}
                         </h5>
-                        <p className="card-text text-secondary flex-grow-1">
-                          ID de recuperación: {datos.id}
+                        <p className="card-text text-muted small flex-grow-1">
+                          ID: {datos.id}
                         </p>
                         <div className="d-flex justify-content-between mt-auto pt-3 gap-2">
                           <button 
-                            className="btn btn-sm btn-outline-primary w-50"
+                            className="btn btn-light border-0 w-50 rounded-3 text-primary fw-semibold"
+                            style={{ backgroundColor: "#e9ecef" }}
                             onClick={() => navigate('/workspace', { state: { diagrama: datos } })}
                           >
                             Abrir
                           </button>
                           <button 
-                            className="btn btn-sm btn-outline-danger w-50"
+                            className="btn btn-light border-0 w-50 rounded-3 text-danger fw-semibold"
+                            style={{ backgroundColor: "#fee2e2" }}
                             onClick={() => eliminarDiagrama(datos.id)}
                           >
                             Eliminar
@@ -119,8 +123,8 @@ const Administrator = () => {
                 )
               })
             ) : (
-              <div className="col-12 text-center text-secondary mt-4">
-                <h5>No hay diagramas guardados.</h5>
+              <div className="col-12 text-center text-muted mt-5">
+                <p className="fs-5">No tienes diagramas guardados.</p>
               </div>
             )}
           </div>
