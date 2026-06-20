@@ -1,47 +1,48 @@
-// Importamos hooks de React. 'useCallback' es vital en React Flow: memoriza funciones para evitar
-// que el lienzo se re-renderice innecesariamente cada vez que movemos un nodo.
+// Importamos hooks nativos de React. 'useCallback' es esencial en React Flow para memorizar 
+// las funciones de los eventos y evitar que el lienzo se re-renderice provocando lag.
 import React, { useState, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-// Importamos todos los módulos fundamentales de la librería reactflow para construir nuestro modelador UML.
+// Importamos la librería principal de React Flow y sus utilidades clave.
+// ConnectionMode es vital para permitir que las flechas entren y salgan por cualquier lado (Universal).
 import ReactFlow, { 
-  ReactFlowProvider, // Proveedor de contexto necesario para poder mutar nodos internamente
-  addEdge,           // Función utilitaria para conectar un origen con un destino
-  useNodesState,     // Hook especializado de React Flow para controlar el estado del array de Nodos (figuras)
-  useEdgesState,     // Hook especializado para controlar el estado del array de Edges (líneas/flechas)
-  Controls,          // Componente visual: Botones de zoom in, zoom out, etc.
-  Background,        // Componente visual: El fondo cuadriculado o de puntos del lienzo
-  Handle,            // Componente clave: Representa un "puerto" o puntito donde se conectan las flechas
-  Position,          // Enum para ubicar los Handles (Top, Bottom, Left, Right)
-  useReactFlow,      // Hook para acceder a la instancia interna del lienzo (útil para rotar o borrar figuras localmente)
-  BaseEdge,          // Componente base para dibujar la línea SVG de nuestra flecha personalizada
-  EdgeLabelRenderer, // Contenedor especial que permite renderizar HTML normal (como botones de basura) sobre SVG
-  getStraightPath    // Función matemática que calcula las coordenadas (d="M...") para dibujar una línea recta
+  ReactFlowProvider,
+  addEdge,
+  useNodesState,
+  useEdgesState,
+  Controls,
+  Background,
+  Handle,
+  Position,
+  useReactFlow,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getStraightPath,
+  MarkerType,
+  ConnectionMode
 } from 'reactflow';
-import 'reactflow/dist/style.css'; // Hojas de estilo base de la librería
+import 'reactflow/dist/style.css';
 import Swal from 'sweetalert2';
 
-// Sistema de generación de IDs únicos para los nodos del lado del cliente.
-let id = 0;
-const getId = () => `nodo_${id++}`;
+// Generador de identificadores únicos para el DOM.
+// Usar Date.now() + un string aleatorio previene que los nodos se sobreescriban o se borren 
+// accidentalmente al agregar nuevos elementos después de cargar un diagrama viejo.
+const getId = () => `nodo_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
 // ========================================================
-// COMPONENTE: BOTÓN DE BORRADO FLOTANTE PARA NODOS
+// COMPONENTE: BOTÓN DE BORRADO FLOTANTE (Basurero)
 // ========================================================
-// Este pequeño botón se inyectará dentro de CADA figura UML.
+// Este componente se inyectará dentro de cada figura para poder eliminarla individualmente.
 const NodeDeleteButton = ({ id }) => {
-  // Extraemos funciones del contexto de React Flow para poder modificar el lienzo desde adentro de un nodo.
   const { setNodes, setEdges } = useReactFlow();
   
   const eliminar = (e) => {
-    e.stopPropagation(); // Evita que se disparen eventos de arrastre o selección al dar clic al basurero.
-    // Filtramos (eliminamos) el nodo cuyo ID coincide con este botón.
+    e.stopPropagation(); // Detenemos la propagación para no activar el "drag" al darle clic al botón.
     setNodes((nds) => nds.filter((n) => n.id !== id));
-    // También debemos eliminar cualquier flecha que estuviera conectada a este nodo recién borrado.
+    // También limpiamos la basura: eliminamos todas las flechas que estaban conectadas a este nodo.
     setEdges((eds) => eds.filter((edge) => edge.source !== id && edge.target !== id));
   };
 
   return (
-    // Es un botón position-absolute que se ancla en la esquina superior derecha (top -12, right -12).
     <button
       className="btn btn-danger btn-sm position-absolute rounded-circle node-delete-btn shadow"
       style={{ top: -12, right: -12, width: 26, height: 26, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
@@ -57,100 +58,232 @@ const NodeDeleteButton = ({ id }) => {
 };
 
 // ========================================================
-// 1. DEFINICIÓN DE NODOS PERSONALIZADOS UML 
+// 1. DICCIONARIO DE NODOS PERSONALIZADOS UML
 // ========================================================
-// React Flow solo conoce cuadrados grises. Aquí le enseñamos a dibujar simbología UML usando puro CSS.
-// Cada "Handle" es un punto de anclaje (puerto) para conectar las flechas.
+// Aquí construimos visualmente cada símbolo del estándar UML. 
+// Asignamos 4 Handles (puntos de anclaje) para máxima flexibilidad de flujo.
 
-// NodoInicio: Un simple círculo negro con un Handle en la parte inferior.
 const NodoInicio = ({ id }) => (
   <div className="position-relative" style={{ width: 30, height: 30, backgroundColor: '#212529', borderRadius: '50%' }}>
     <NodeDeleteButton id={id} />
-    <Handle type="source" position={Position.Bottom} style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Top} id="t-in" style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Left} id="l-in" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Bottom} id="b-out" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Right} id="r-out" style={{ background: '#555' }} />
   </div>
 );
 
-// NodoActividad: Un rectángulo de esquinas redondeadas. Recibe { data } porque necesita pintar el texto que el usuario escribió (data.label).
 const NodoActividad = ({ id, data }) => (
   <div className="shadow-sm bg-white position-relative" style={{ padding: '10px 20px', border: '2px solid #212529', borderRadius: '20px', minWidth: 120, textAlign: 'center' }}>
     <NodeDeleteButton id={id} />
-    <Handle type="target" position={Position.Top} style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Top} id="t-in" style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Left} id="l-in" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Bottom} id="b-out" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Right} id="r-out" style={{ background: '#555' }} />
     <strong className="text-dark" style={{ fontSize: '14px' }}>{data.label}</strong>
-    <Handle type="source" position={Position.Bottom} style={{ background: '#555' }} />
   </div>
 );
 
-// NodoDecision: Un cuadrado girado 45 grados (transform: rotate) para formar el rombo UML. Tiene puertos en Top, Bottom, Left y Right.
+// Call Behavior: Usamos SVG puro para incrustar el "rastrillo" orientado hacia arriba.
+const NodoLlamarActividad = ({ id, data }) => (
+  <div className="shadow-sm bg-white position-relative" style={{ padding: '10px 20px', border: '2px solid #212529', borderRadius: '20px', minWidth: 130, textAlign: 'center' }}>
+    <NodeDeleteButton id={id} />
+    <Handle type="target" position={Position.Top} id="t-in" style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Left} id="l-in" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Bottom} id="b-out" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Right} id="r-out" style={{ background: '#555' }} />
+    <strong className="text-dark" style={{ fontSize: '14px' }}>{data.label}</strong>
+    <svg viewBox="0 0 24 24" style={{ width: 18, height: 18, position: 'absolute', bottom: 4, right: 8, pointerEvents: 'none' }}>
+      <path d="M12 6 V12 M7 12 H17 M7 12 V18 M12 12 V18 M17 12 V18" fill="none" stroke="#212529" strokeWidth="2" strokeLinecap="square" />
+    </svg>
+  </div>
+);
+
+// Objeto: Bordes completamente rectos sin radio.
+const NodoObjeto = ({ id, data }) => (
+  <div className="shadow-sm bg-white position-relative" style={{ padding: '10px 20px', border: '2px solid #212529', borderRadius: '0px', minWidth: 120, textAlign: 'center' }}>
+    <NodeDeleteButton id={id} />
+    <Handle type="target" position={Position.Top} id="t-in" style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Left} id="l-in" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Bottom} id="b-out" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Right} id="r-out" style={{ background: '#555' }} />
+    <strong className="text-dark" style={{ fontSize: '14px' }}>{data.label}</strong>
+  </div>
+);
+
+// Decisión/Merge: Contenedor con un rombo interior rotado 45 grados.
 const NodoDecision = ({ id, data }) => (
   <div style={{ position: 'relative', width: 80, height: 80 }}>
     <NodeDeleteButton id={id} />
     <div className="shadow-sm bg-white" style={{ width: '100%', height: '100%', border: '2px solid #212529', transform: 'rotate(45deg)' }}></div>
-    {/* El texto va en un contenedor aparte absoluto para que no salga girado 45 grados con el rombo */}
+    {/* El texto va en posición absoluta para no heredar la rotación del rombo */}
     <div className="text-dark fw-bold text-center" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '12px', width: '100%' }}>
       {data.label}
     </div>
-    <Handle type="target" position={Position.Top} style={{ background: '#555', top: -5 }} />
-    <Handle type="source" position={Position.Bottom} style={{ background: '#555', bottom: -5 }} id="bottom" />
-    <Handle type="source" position={Position.Right} style={{ background: '#555', right: -5 }} id="right" />
-    <Handle type="source" position={Position.Left} style={{ background: '#555', left: -5 }} id="left" />
+    <Handle type="target" position={Position.Top} style={{ background: '#555', top: -5 }} id="t-in" />
+    <Handle type="target" position={Position.Left} style={{ background: '#555', left: -5 }} id="l-in" />
+    <Handle type="source" position={Position.Bottom} style={{ background: '#555', bottom: -5 }} id="b-out" />
+    <Handle type="source" position={Position.Right} style={{ background: '#555', right: -5 }} id="r-out" />
   </div>
 );
 
-// NodoSincronizacion (Fork/Join): Una barra sólida. 
-// Tiene lógica especial: al hacer doble clic, cambia un valor booleano en su estado ('vertical') para rotarse dinámicamente mutando su CSS de width/height.
+// Sincronización (Fork/Join): Nodo dinámico. Doble clic para permutar Vertical/Horizontal. 3 entradas/salidas ficas.
 const NodoSincronizacion = ({ id, data }) => {
   const { setNodes } = useReactFlow();
   const isVertical = data.vertical || false;
   const rotar = () => setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, vertical: !n.data.vertical } } : n));
+  
   return (
     <div className="position-relative" onDoubleClick={rotar} title="Doble clic para rotar" style={{ width: isVertical ? 8 : 100, height: isVertical ? 100 : 8, backgroundColor: '#212529', borderRadius: '4px', cursor: 'pointer' }}>
       <NodeDeleteButton id={id} />
-      {/* Dependiendo de si es vertical u horizontal, los Handles cambian de lado para mantener la lógica UML */}
-      <Handle type="target" position={isVertical ? Position.Left : Position.Top} style={{ background: '#555' }} />
-      <Handle type="source" position={isVertical ? Position.Right : Position.Bottom} style={{ background: '#555' }} />
+      <Handle type="target" position={isVertical ? Position.Left : Position.Top} id="in1" style={{ background: '#555', left: isVertical?'auto':'20%', top: isVertical?'20%':'auto' }} />
+      <Handle type="target" position={isVertical ? Position.Left : Position.Top} id="in2" style={{ background: '#555', left: isVertical?'auto':'50%', top: isVertical?'50%':'auto' }} />
+      <Handle type="target" position={isVertical ? Position.Left : Position.Top} id="in3" style={{ background: '#555', left: isVertical?'auto':'80%', top: isVertical?'80%':'auto' }} />
+      <Handle type="source" position={isVertical ? Position.Right : Position.Bottom} id="out1" style={{ background: '#555', left: isVertical?'auto':'20%', top: isVertical?'20%':'auto' }} />
+      <Handle type="source" position={isVertical ? Position.Right : Position.Bottom} id="out2" style={{ background: '#555', left: isVertical?'auto':'50%', top: isVertical?'50%':'auto' }} />
+      <Handle type="source" position={isVertical ? Position.Right : Position.Bottom} id="out3" style={{ background: '#555', left: isVertical?'auto':'80%', top: isVertical?'80%':'auto' }} />
     </div>
   );
 };
 
-// NodoFin: Círculo UML concéntrico (ojo de buey).
 const NodoFin = ({ id }) => (
   <div className="bg-white position-relative" style={{ width: 34, height: 34, border: '3px solid #212529', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
     <NodeDeleteButton id={id} />
     <div style={{ width: 20, height: 20, backgroundColor: '#212529', borderRadius: '50%' }}></div>
-    <Handle type="target" position={Position.Top} style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Top} id="t-in" style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Left} id="l-in" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Bottom} id="b-out" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Right} id="r-out" style={{ background: '#555' }} />
   </div>
 );
 
-// NodoFlowFinal: Círculo con una "X" en medio. La "X" está hecha cruzando dos divs de 3px rotados 45 y -45 grados.
 const NodoFlowFinal = ({ id }) => (
   <div className="bg-white position-relative" style={{ width: 34, height: 34, border: '3px solid #212529', borderRadius: '50%' }}>
     <NodeDeleteButton id={id} />
     <div style={{ position: 'absolute', top: '50%', left: '50%', width: '100%', height: '3px', backgroundColor: '#212529', transform: 'translate(-50%, -50%) rotate(45deg)' }} />
     <div style={{ position: 'absolute', top: '50%', left: '50%', width: '100%', height: '3px', backgroundColor: '#212529', transform: 'translate(-50%, -50%) rotate(-45deg)' }} />
-    <Handle type="target" position={Position.Top} style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Top} id="t-in" style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Left} id="l-in" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Bottom} id="b-out" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Right} id="r-out" style={{ background: '#555' }} />
   </div>
 );
 
-// NodoEnviarSenal / NodoAceptarSenal: Usamos clip-path para "recortar" divs normales y darles forma de flecha asimétrica.
 const NodoEnviarSenal = ({ id, data }) => (
-  <div className="shadow-sm bg-white position-relative" style={{ padding: '10px 10px 10px 20px', border: '2px solid #212529', clipPath: 'polygon(0% 0%, 80% 0%, 100% 50%, 80% 100%, 0% 100%)', minWidth: 140, minHeight: 45, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+  <div className="position-relative" style={{ width: 140, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
     <NodeDeleteButton id={id} />
-    <Handle type="target" position={Position.Left} style={{ background: '#555', left: -5 }} />
-    <strong className="text-dark" style={{ fontSize: '14px', marginRight: '20px' }}>{data.label}</strong>
-    <Handle type="source" position={Position.Right} style={{ background: '#555', right: -5 }} />
+    <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: -1 }}>
+      <polygon points="2,2 110,2 138,25 110,48 2,48" fill="white" stroke="#212529" strokeWidth="2" />
+    </svg>
+    <Handle type="target" position={Position.Left} id="l-in" style={{ background: '#555', left: -5 }} />
+    <Handle type="target" position={Position.Top} id="t-in" style={{ background: '#555' }} />
+    <strong className="text-dark" style={{ fontSize: '13px', marginRight: '15px', zIndex: 1 }}>{data.label}</strong>
+    <Handle type="source" position={Position.Right} id="r-out" style={{ background: '#555', right: -5 }} />
+    <Handle type="source" position={Position.Bottom} id="b-out" style={{ background: '#555' }} />
   </div>
 );
 
 const NodoAceptarSenal = ({ id, data }) => (
-  <div className="shadow-sm bg-white position-relative" style={{ padding: '10px 20px 10px 30px', border: '2px solid #212529', clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%, 20% 50%)', minWidth: 140, minHeight: 45, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+  <div className="position-relative" style={{ width: 140, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
     <NodeDeleteButton id={id} />
-    <Handle type="target" position={Position.Left} style={{ background: '#555', left: -5 }} />
-    <strong className="text-dark" style={{ fontSize: '14px' }}>{data.label}</strong>
-    <Handle type="source" position={Position.Right} style={{ background: '#555', right: -5 }} />
+    <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: -1 }}>
+      <polygon points="2,2 138,2 138,48 2,48 30,25" fill="white" stroke="#212529" strokeWidth="2" />
+    </svg>
+    <Handle type="target" position={Position.Left} id="l-in" style={{ background: '#555', left: 5 }} />
+    <Handle type="target" position={Position.Top} id="t-in" style={{ background: '#555' }} />
+    <strong className="text-dark" style={{ fontSize: '13px', marginLeft: '15px', zIndex: 1 }}>{data.label}</strong>
+    <Handle type="source" position={Position.Right} id="r-out" style={{ background: '#555', right: -5 }} />
+    <Handle type="source" position={Position.Bottom} id="b-out" style={{ background: '#555' }} />
   </div>
 );
 
-// NodoTimeEvent: Dibujamos un reloj de arena usando una etiqueta <svg> incrustada.
+// Parámetros Actividad: Pines laterales diseñados totalmente externos (fuera del borde).
+const NodoParametrosActividad = ({ id, data }) => (
+  <div className="shadow-sm bg-white position-relative" style={{ padding: '10px 20px', border: '2px solid #212529', borderRadius: '20px', minWidth: 140, textAlign: 'center', zIndex: 1 }}>
+    <NodeDeleteButton id={id} />
+    <div style={{ position: 'absolute', left: -14, top: '50%', transform: 'translateY(-50%)', width: 14, height: 18, backgroundColor: 'white', border: '2px solid #212529', zIndex: 1 }}></div>
+    <div style={{ position: 'absolute', right: -14, top: '50%', transform: 'translateY(-50%)', width: 14, height: 18, backgroundColor: 'white', border: '2px solid #212529', zIndex: 1 }}></div>
+    <Handle type="target" position={Position.Top} id="t-in" style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Left} id="l-in" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Bottom} id="b-out" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Right} id="r-out" style={{ background: '#555' }} />
+    <strong className="text-dark" style={{ fontSize: '14px' }}>{data.label}</strong>
+  </div>
+);
+
+// Parámetros Acción: Pines "sumergidos" a la mitad del borde usando zIndex negativo.
+const NodoParametrosAccion = ({ id, data }) => (
+  <div className="shadow-sm bg-white position-relative" style={{ padding: '10px 20px', border: '2px solid #212529', borderRadius: '20px', minWidth: 140, textAlign: 'center', zIndex: 1 }}>
+    <NodeDeleteButton id={id} />
+    <div style={{ position: 'absolute', left: -6, top: '50%', transform: 'translateY(-50%)', width: 12, height: 16, backgroundColor: 'white', border: '2px solid #212529', zIndex: -1 }}></div>
+    <div style={{ position: 'absolute', right: -6, top: '50%', transform: 'translateY(-50%)', width: 12, height: 16, backgroundColor: 'white', border: '2px solid #212529', zIndex: -1 }}></div>
+    <Handle type="target" position={Position.Top} id="t-in" style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Left} id="l-in" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Bottom} id="b-out" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Right} id="r-out" style={{ background: '#555' }} />
+    <strong className="text-dark" style={{ fontSize: '14px' }}>{data.label}</strong>
+  </div>
+);
+
+// Exception Handler UML: Figura flotante, carece de Handles por norma técnica. Símbolo 'Z'.
+const NodoExcepcion = ({ id, data }) => (
+  <div className="position-relative" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: 50, height: 50 }}>
+    <NodeDeleteButton id={id} />
+    <svg width="40" height="40" viewBox="0 0 30 30" fill="none" stroke="#212529" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: 'none' }}>
+      <path d="M4 8 L24 8 L8 22 L28 22" />
+      <polyline points="22,16 28,22 22,28" />
+    </svg>
+    {data?.label && (
+      <div className="fw-bold text-dark mt-1" style={{ fontSize: '12px', position: 'absolute', bottom: -20, whiteSpace: 'nowrap' }}>
+        {data.label}
+      </div>
+    )}
+  </div>
+);
+
+// Nodo de Partición (Swimlane). Utilizado para agrupaciones lógicas. Rotable 180° con doble clic.
+const NodoParticion = ({ id, data }) => {
+  const { setNodes } = useReactFlow();
+  const isVertical = data.vertical || false;
+  const rotar = () => setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, vertical: !n.data.vertical } } : n));
+
+  return (
+    <div
+      className="position-relative"
+      onDoubleClick={rotar}
+      title="Doble clic para rotar"
+      style={{
+        width: isVertical ? 250 : 500,
+        height: isVertical ? 500 : 250,
+        border: '2px solid #212529',
+        backgroundColor: 'rgba(255, 255, 255, 0.4)',
+        zIndex: -2, // Profundidad de fondo para evitar traslapes visuales
+        display: 'flex',
+        flexDirection: isVertical ? 'column' : 'row'
+      }}
+    >
+      <NodeDeleteButton id={id} />
+      <div style={{
+        borderBottom: isVertical ? '2px solid #212529' : 'none',
+        borderRight: isVertical ? 'none' : '2px solid #212529',
+        backgroundColor: '#e9ecef',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: isVertical ? '40px' : '100%',
+        minWidth: isVertical ? '100%' : '40px',
+        writingMode: isVertical ? 'horizontal-tb' : 'vertical-rl', 
+        transform: isVertical ? 'none' : 'rotate(180deg)',
+        fontWeight: 'bold',
+        fontSize: '14px',
+        color: '#212529'
+      }}>
+        {data.label}
+      </div>
+    </div>
+  );
+};
+
 const NodoTimeEvent = ({ id, data }) => (
   <div className="position-relative" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
     <NodeDeleteButton id={id} />
@@ -158,12 +291,13 @@ const NodoTimeEvent = ({ id, data }) => (
       <path d="M4 2 L20 2 M4 22 L20 22 M5 2 L12 12 L19 2 M5 22 L12 12 L19 22" />
     </svg>
     <div className="fw-bold text-dark mt-1" style={{ fontSize: '12px' }}>{data.label}</div>
-    <Handle type="target" position={Position.Top} />
-    <Handle type="source" position={Position.Bottom} />
+    <Handle type="target" position={Position.Top} id="t-in" style={{ background: '#555' }} />
+    <Handle type="target" position={Position.Left} id="l-in" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Bottom} id="b-out" style={{ background: '#555' }} />
+    <Handle type="source" position={Position.Right} id="r-out" style={{ background: '#555' }} />
   </div>
 );
 
-// NodoTextoLibre: Solo texto, sin bordes ni fondos. Ideal para anotaciones de guardias.
 const NodoTextoLibre = ({ id, data }) => (
   <div className="text-dark position-relative" style={{ fontSize: '14px', minWidth: 50 }}>
     <NodeDeleteButton id={id} />
@@ -171,9 +305,24 @@ const NodoTextoLibre = ({ id, data }) => (
   </div>
 );
 
-// NodoRegion: Un marco grande. Z-index -1 lo manda al fondo para que pueda "envolver" a otros componentes encima de él.
+// Región Interrumpible: Usa propiedades nativas resize de CSS para permitir que 
+// el usuario final la estire libremente con el ratón.
 const NodoRegion = ({ id, data }) => (
-  <div className="position-relative" style={{ width: 400, height: 300, border: '2px dashed #adb5bd', backgroundColor: 'rgba(248, 249, 250, 0.5)', zIndex: -1, borderRadius: '8px' }}>
+  <div 
+    className="position-relative shadow-sm" 
+    style={{ 
+      width: 400, 
+      height: 300, 
+      minWidth: 150, 
+      minHeight: 100, 
+      border: '2px dashed #adb5bd', 
+      backgroundColor: 'rgba(248, 249, 250, 0.5)', 
+      zIndex: -1, 
+      borderRadius: '8px',
+      resize: 'both', 
+      overflow: 'auto' 
+    }}
+  >
     <NodeDeleteButton id={id} />
     <div className="bg-light text-muted fw-semibold px-3 py-1" style={{ display: 'inline-block', fontSize: '12px', borderBottomRightRadius: '8px', borderRight: '2px dashed #adb5bd', borderBottom: '2px dashed #adb5bd' }}>
       {data.label}
@@ -181,42 +330,53 @@ const NodoRegion = ({ id, data }) => (
   </div>
 );
 
-// Este es el "Diccionario" de Nodos. Le dice a React Flow: "Cuando el JSON diga type: 'decision', renderiza mi componente NodoDecision".
+// Catálogo de mapeo de nombres de tipo a componentes custom.
 const nodeTypes = {
-  inicio: NodoInicio, actividad: NodoActividad, decision: NodoDecision,
-  sincronizacion: NodoSincronizacion, fin: NodoFin, flowFinal: NodoFlowFinal,
-  enviarSenal: NodoEnviarSenal, aceptarSenal: NodoAceptarSenal,
-  timeEvent: NodoTimeEvent, textoLibre: NodoTextoLibre, region: NodoRegion
+  inicio: NodoInicio, 
+  actividad: NodoActividad, 
+  llamarActividad: NodoLlamarActividad, 
+  objeto: NodoObjeto,                   
+  decision: NodoDecision,
+  sincronizacion: NodoSincronizacion, 
+  fin: NodoFin, 
+  flowFinal: NodoFlowFinal,
+  enviarSenal: NodoEnviarSenal, 
+  aceptarSenal: NodoAceptarSenal,
+  timeEvent: NodoTimeEvent, 
+  textoLibre: NodoTextoLibre, 
+  region: NodoRegion,
+  parametrosActividad: NodoParametrosActividad,
+  parametrosAccion: NodoParametrosAccion,
+  excepcion: NodoExcepcion,
+  particion: NodoParticion
 };
 
 // ========================================================
-// 2. FLECHAS PERSONALIZADAS (Custom Edges)
+// 2. CONSTRUCCIÓN DE FLECHAS (Custom Edges UML)
 // ========================================================
-// Requerimos que las flechas tengan un botón de borrado incrustado. React Flow no lo trae por defecto.
+// Renderiza el vector de la línea y el botón de borrado rojo flotando encima de su centro.
 const CustomEdge = ({ id, sourceX, sourceY, targetX, targetY, style, markerEnd }) => {
   const { setEdges } = useReactFlow();
   
-  // getStraightPath calcula matemáticamente la trayectoria recta (en formato SVG "M x y L x y") entre el punto de origen y el destino.
+  // Obtenemos la trayectoria de la línea calculada algorítmicamente
   const [edgePath, labelX, labelY] = getStraightPath({ sourceX, sourceY, targetX, targetY });
+
+  // CORRECCIÓN: Seguro para forzar la punta de la flecha UML hueca/abierta ('V') si omite el MarkerEnd.
+  const safeMarkerEnd = markerEnd || 'url(#react-flow__arrow)';
 
   const eliminarFlecha = (e) => {
     e.stopPropagation();
-    // Filtramos la flecha con este ID del estado global.
     setEdges((eds) => eds.filter(edge => edge.id !== id));
   };
 
   return (
     <>
-      {/* Dibuja la línea SVG base usando los cálculos generados */}
-      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
-      
-      {/* EdgeLabelRenderer permite pintar botones HTML (como nuestro basurero) flotando encima de las líneas SVG */}
+      <BaseEdge path={edgePath} markerEnd={safeMarkerEnd} style={style} />
       <EdgeLabelRenderer>
         <div
           className="edge-hover-container nodrag nopan"
           style={{
             position: 'absolute',
-            // Desplazamos el contenedor exactamente a la mitad (centro) de la flecha calculada.
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
             pointerEvents: 'all',
             display: 'flex',
@@ -224,7 +384,6 @@ const CustomEdge = ({ id, sourceX, sourceY, targetX, targetY, style, markerEnd }
             alignItems: 'center'
           }}
         >
-          {/* Botón Flotante de la Flecha */}
           <button
             className="btn btn-danger btn-sm rounded-circle shadow edge-delete-btn"
             style={{ width: 24, height: 24, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -242,57 +401,60 @@ const CustomEdge = ({ id, sourceX, sourceY, targetX, targetY, style, markerEnd }
   );
 };
 
-// Diccionario de flechas.
 const edgeTypes = { custom: CustomEdge };
 
 // ========================================================
-// 3. COMPONENTE PRINCIPAL: ÁREA DE TRABAJO (El Lienzo)
+// 3. COMPONENTE PRINCIPAL: EL LIENZO DEL MODELADOR (Área de Trabajo)
 // ========================================================
 const AreaTrabajo = () => {
-  // useLocation extrae la información (el estado en memoria) que Administrator.jsx nos envió al hacer clic en "Abrir" o "Crear".
   const location = useLocation();
   const navigate = useNavigate();
-  // useRef mantiene una referencia directa al contenedor DOM del lienzo para poder calcular posiciones del mouse (Drag and Drop).
   const reactFlowWrapper = useRef(null);
   
   const diagramaActual = location.state?.diagrama;
-  // Estado local para poder renombrar el diagrama.
   const [nombreDiagrama, setNombreDiagrama] = useState(diagramaActual?.nombre || 'Diagrama sin título');
   
-  // Inicializamos el estado del lienzo con la información previa de la BD (si era abrir) o arrays vacíos (si era crear).
   const [nodes, setNodes, onNodesChange] = useNodesState(diagramaActual?.nodos || []);
   const [edges, setEdges, onEdgesChange] = useEdgesState(diagramaActual?.conexiones || []);
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
 
-  // Mecanismo de seguridad: Si alguien entra a la URL '/workspace' directo sin pasar por el Admin, lo devolvemos.
+  // Verificación de seguridad básica para accesos directos por URL.
   if (!diagramaActual) {
     navigate('/administrator');
     return null;
   }
 
-  // Estructura de nuestra paleta lateral de componentes. 'tipoId' es el enlace con 'nodeTypes'.
+  // Catálogo de la Paleta de Herramientas (Draggable)
   const herramientasUML = [
     { tipoId: 'inicio', nombre: 'Estado Inicial', simbolo: '●' },
     { tipoId: 'actividad', nombre: 'Actividad', simbolo: '▭' },
-    { tipoId: 'decision', nombre: 'Decisión', simbolo: '◇' },
+    { tipoId: 'llamarActividad', nombre: 'Call Behavior', simbolo: '🔱' },
+    { tipoId: 'objeto', nombre: 'Objeto', simbolo: '▱' },
+    { tipoId: 'decision', nombre: 'Decisión / Merge', simbolo: '◇' },
     { tipoId: 'sincronizacion', nombre: 'Fork / Join', simbolo: '➖' },
     { tipoId: 'enviarSenal', nombre: 'Enviar Señal', simbolo: '⏣' },
-    { tipoId: 'aceptarSenal', nombre: 'Aceptar Señal', simbolo: '⎔' },
+    { tipoId: 'aceptarSenal', nombre: 'Aceptar Evento', simbolo: '⎔' },
     { tipoId: 'timeEvent', nombre: 'Time Event', simbolo: '⏳' },
-    { tipoId: 'fin', nombre: 'Estado Final', simbolo: '◉' },
+    { tipoId: 'parametrosActividad', nombre: 'Params (Actividad)', simbolo: '⧉' },
+    { tipoId: 'parametrosAccion', nombre: 'Params (Acción)', simbolo: '⊟' },
+    { tipoId: 'excepcion', nombre: 'Excepción', simbolo: '⧖' },
+    { tipoId: 'particion', nombre: 'Partición (Swimlane)', simbolo: '◫' },
+    { tipoId: 'fin', nombre: 'Actividad Final', simbolo: '◉' },
     { tipoId: 'flowFinal', nombre: 'Flow Final', simbolo: '⊗' },
     { tipoId: 'textoLibre', nombre: 'Texto Libre', simbolo: 'T' },
-    { tipoId: 'region', nombre: 'Región', simbolo: '⧉' }
+    { tipoId: 'region', nombre: 'Región Interrumpible', simbolo: '⛶' }
   ];
 
-  // useCallback guarda la función onConnect en memoria.
-  // Cuando el usuario arrastra un handle a otro, este evento se dispara, inyectando nuestra flecha 'custom' (recta y oscura).
+  // Callback de conexión: Disparado al enlazar manualmente dos Handles.
   const onConnect = useCallback((params) => setEdges((eds) => addEdge({ 
-    ...params, type: 'custom', style: { stroke: '#212529', strokeWidth: 2 } 
-  }, eds)), []);
+    ...params, 
+    type: 'custom', 
+    style: { stroke: '#212529', strokeWidth: 2 },
+    // CORRECCIÓN: Definimos punta de flecha abierta (hueca) por defecto.
+    markerEnd: { type: MarkerType.Arrow, color: '#212529' } 
+  }, eds)), [setEdges]);
 
-  // LÓGICA DE DRAG & DROP NATIVA DE HTML5
-  // Al iniciar el arrastre desde la paleta, guardamos en la transferencia de datos el 'tipoId' de la figura seleccionada.
+  // APIs HTML5 Drag and Drop integradas.
   const onDragStart = (event, nodeType, defaultName) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
     event.dataTransfer.setData('application/name', defaultName);
@@ -300,49 +462,57 @@ const AreaTrabajo = () => {
   };
 
   const onDragOver = useCallback((event) => {
-    event.preventDefault(); // Indispensable para permitir el evento drop.
+    event.preventDefault(); 
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  // Evento que se dispara al "soltar" la figura dentro del lienzo.
+  // Lógica de caída (Drop) sobre el lienzo
   const onDrop = useCallback(
     (event) => {
       event.preventDefault();
-      // Leemos qué tipo de figura estábamos arrastrando.
       const type = event.dataTransfer.getData('application/reactflow');
       const defaultName = event.dataTransfer.getData('application/name');
-      if (typeof type === 'undefined' || !type) return;
+      if (!type) return;
 
-      // Usamos el objeto de React Flow para traducir la posición (X, Y) del ratón en la pantalla a coordenadas escaladas dentro del lienzo (Zoom, Paneo).
       const position = reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      // Generamos el ID único final al momento de soltar la figura para evitar colisiones.
+      const newNodeId = getId();
 
-      let nombreNodo = defaultName;
-      // Algunas figuras (como el punto de inicio) no llevan texto. Solo pedimos texto si está en este arreglo.
-      if (['actividad', 'decision', 'enviarSenal', 'aceptarSenal', 'timeEvent', 'textoLibre', 'region'].includes(type)) {
-        const input = prompt("Ingrese el texto:", defaultName);
-        if (input === null) return; // Si el usuario da "Cancelar" en el prompt, abortamos la creación de la figura.
-        nombreNodo = input;
-      }
-
-      // Estructuramos el nuevo objeto Node y lo concatenamos al array de estado general.
       const newNode = {
-        id: getId(), type, position, data: { label: nombreNodo, vertical: false },
+        id: newNodeId, type, position, data: { label: defaultName, vertical: false },
         style: type === 'region' ? { zIndex: -1 } : {}
       };
+      
+      // Inserción segura usando actualización funcional para preservar la integridad del estado.
       setNodes((nds) => nds.concat(newNode));
+
+      const tiposConTexto = [
+        'actividad', 'llamarActividad', 'objeto', 'decision', 'enviarSenal', 
+        'aceptarSenal', 'timeEvent', 'textoLibre', 'region', 
+        'parametrosActividad', 'parametrosAccion', 'particion', 'excepcion'
+      ];
+      
+      if (tiposConTexto.includes(type)) {
+        // Un retardo de 50ms previene bugs donde ReactFlow "atoraba" líneas fantasma al abrir el prompt.
+        setTimeout(() => {
+          const input = prompt("Ingrese el texto para el nodo (puede dejarlo en blanco o usar espacios):", defaultName);
+          // Permitimos strings vacíos o nulos para que el nodo se dibuje sin texto. 
+          // Solo ignoramos si el usuario presiona "Cancelar" explícitamente.
+          if (input !== null) {
+            setNodes((nds) => nds.map(n => n.id === newNodeId ? { ...n, data: { ...n.data, label: input } } : n));
+          }
+        }, 50);
+      }
     },
-    [reactFlowInstance] // La dependencia indica que esta función necesita conocer la instancia actualizada del lienzo.
+    [reactFlowInstance, setNodes] 
   );
 
-  // Función de Guardado Persistente en Base de Datos.
+  // Guardado de Diagrama en el Servidor (POST a Tomcat)
   const guardarDiagrama = () => {
-    // Empaquetamos todo el estado vital del React Flow en un objeto JavaScript estructurado.
     const diagramaExportado = { id: diagramaActual.id, nombre: nombreDiagrama, nodos: nodes, conexiones: edges };
-    // Lo serializamos a una cadena JSON plana.
     const jsonStr = JSON.stringify(diagramaExportado);
 
-    // Consumimos el Endpoint POST '/GuardarDiagrama' del Servlet de Java.
-    fetch('GuardarDiagrama', {
+    fetch('http://localhost:8080/Backend_DiagAct/GuardarDiagrama', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ id: diagramaActual.id, json: jsonStr })
@@ -354,15 +524,17 @@ const AreaTrabajo = () => {
       } else {
         Swal.fire('Error', 'No se pudo guardar.', 'error');
       }
+    })
+    .catch(error => {
+      console.error(error);
+      Swal.fire('Error', 'Fallo de conexión al servidor Tomcat.', 'error');
     });
   };
 
   return (
     <div className="bg-light vh-100 d-flex flex-column" style={{ overflowX: 'hidden' }}>
       
-      {/* ESTILOS CSS INYECTADOS
-          Aquí se define la animación sutil (opacidad y escala) de los botones rojos de borrado
-          para que solo aparezcan cuando el mouse está haciendo :hover sobre una figura UML. */}
+      {/* Estilos CSS scoped para las animaciones de borrado de nodos y flechas */}
       <style>
         {`
           .node-delete-btn, .edge-delete-btn {
@@ -384,7 +556,7 @@ const AreaTrabajo = () => {
         `}
       </style>
 
-      {/* Navbar Superior Blanca con título editable y botón de Guardado */}
+      {/* Barra de navegación superior con el nombre del modelo y botón de guardar */}
       <nav className="navbar navbar-light bg-white shadow-sm px-4 py-2 z-3">
         <div className="container-fluid d-flex justify-content-between align-items-center">
           <div className="d-flex align-items-center gap-3">
@@ -406,9 +578,10 @@ const AreaTrabajo = () => {
         </div>
       </nav>
 
+      {/* Área central dividida en Paleta de Herramientas y Lienzo */}
       <div className="d-flex flex-grow-1 overflow-hidden">
         
-        {/* Panel Lateral Minimalista que renderiza los items iterando el arreglo 'herramientasUML' */}
+        {/* Paleta UML lateral */}
         <div className="bg-white border-end shadow-sm overflow-auto z-2 custom-scrollbar" style={{ width: "260px" }}>
           <div className="p-4">
             <h6 className="text-muted fw-bold mb-4 small text-uppercase tracking-wide">Paleta UML</h6>
@@ -418,8 +591,8 @@ const AreaTrabajo = () => {
                   key={index} 
                   className="d-flex align-items-center p-2 rounded-3 text-dark border border-white hover-shadow transition"
                   style={{ cursor: "grab", backgroundColor: "#f8f9fa" }}
-                  onDragStart={(event) => onDragStart(event, herr.tipoId, herr.nombre)} // Alerta el inicio del Drag
-                  draggable // Atributo HTML5 que permite agarrar el elemento
+                  onDragStart={(event) => onDragStart(event, herr.tipoId, herr.nombre)} 
+                  draggable 
                 >
                   <div className="fs-4 me-3 text-dark" style={{ width: '30px', textAlign: 'center' }}>{herr.simbolo}</div>
                   <span className="fw-medium small">{herr.nombre}</span>
@@ -429,25 +602,27 @@ const AreaTrabajo = () => {
           </div>
         </div>
 
-        {/* Lienzo React Flow. Todo está encapsulado en ReactFlowProvider para permitir inyección de contexto. */}
-        <div className="flex-grow-1 position-relative bg-light" ref={reactFlowWrapper}>
+        {/* Contenedor del Lienzo de React Flow */}
+        <div className="flex-grow-1 position-relative bg-light" ref={reactFlowWrapper} onDrop={onDrop} onDragOver={onDragOver}>
           <ReactFlowProvider>
             <ReactFlow
-              nodes={nodes} // Inyecta las coordenadas y estado de las figuras
-              edges={edges} // Inyecta las flechas y sus conexiones
-              nodeTypes={nodeTypes} // Le indica qué componente HTML usar para cada tipo de figura
-              edgeTypes={edgeTypes} // Le indica usar la flecha con el botón de borrar en lugar de la flecha estándar
-              onNodesChange={onNodesChange} // Permite a React Flow mutar la posición del nodo al arrastrarlo internamente
-              onEdgesChange={onEdgesChange} // Permite a React Flow mutar flechas al arrastrarlas
-              onConnect={onConnect} // Gatillo al unir dos Handles
-              onInit={setReactFlowInstance} // Guarda la instancia del canvas (zoom, x, y) una vez cargado
-              onDrop={onDrop} // Evento gatillado al soltar una figura de la paleta lateral
-              onDragOver={onDragOver}
-              fitView // Hace un zoom inteligente al iniciar para enfocar el diagrama completo
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes} 
+              onInit={setReactFlowInstance}
+              connectionMode={ConnectionMode.Loose} // CLAVE: Permite conectar cualquier punto con cualquier punto sin restricciones de sentido.
+              defaultEdgeOptions={{
+                style: { strokeWidth: 2, stroke: '#212529' },
+                // CORRECCIÓN: Flecha abierta (hueca/tipo V) como valor por defecto del lienzo.
+                markerEnd: { type: MarkerType.Arrow, color: '#212529' }
+              }}
             >
-              {/* Componentes visuales adicionales de la librería */}
-              <Controls className="bg-white border-0 shadow-sm rounded-3" />
-              <Background color="#dee2e6" gap={20} size={1.5} />
+              <Background color="#ccc" gap={16} /> 
+              <Controls /> 
             </ReactFlow>
           </ReactFlowProvider>
         </div>

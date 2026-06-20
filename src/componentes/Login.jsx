@@ -25,7 +25,7 @@ const Login = () => {
     // Requerimiento de seguridad: Nos aseguramos de que los campos arranquen completamente vacíos.
     setUsuario('');
     setPassword('');
-  }, []);
+  }, [])
 
   // Función asíncrona que se dispara al presionar el botón "Ingresar al Sistema"
   const validar = () => {
